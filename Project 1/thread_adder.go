@@ -9,6 +9,7 @@ import (
 	"os" //Takes in command line inputs
 	"strconv"
 	"strings"
+	"sync"
 )
 
 // Json message to send from coordinator to worker
@@ -45,7 +46,7 @@ func check(e error) {
 
 // Coordinator
 func multi_add(M float64, fname string) {
-	//wait_group := new(sync.WaitGroup) //Waitgroup
+	wait_group := new(sync.WaitGroup) //Waitgroup
 
 	var worker_message WorkerMessage          //Message to send to worker
 	var result_array = make([][]byte, int(M)) // Array to hold result arrays from partial_sum
@@ -84,9 +85,8 @@ func multi_add(M float64, fname string) {
 
 		//Creating thread with worker
 		worker := &ChannelWorker{work, result}
-		go worker.partial_sum()
-		//go worker.partial_sum(wait_group)
-		//wait_group.Add(1)
+		go worker.partial_sum(wait_group)
+		wait_group.Add(1)
 
 		//Return value from partial_sum
 		result_array[i] = <-result
@@ -107,13 +107,13 @@ func multi_add(M float64, fname string) {
 	}
 
 	//Wait here
-	//wait_group.Wait()
+	wait_group.Wait()
 }
 
 //	Worker
 //
 // {psum: 23, pcount: 3, prefix: '1224 ', suffix: ' 678', start:40, end:55}"
-func (worker *ChannelWorker) partial_sum() {
+func (worker *ChannelWorker) partial_sum(wait_group *sync.WaitGroup) {
 	var coordinator_message CoordinatorMessage
 	var psum int
 	var pcount int
@@ -173,7 +173,7 @@ func (worker *ChannelWorker) partial_sum() {
 	//Return value through channel
 	send_message, _ := json.Marshal(coordinator_message)
 
-	//wait_group.Done() //Mark finish to prevent deadlock
+	wait_group.Done() //Mark finish to prevent deadlock
 
 	worker.Result <- send_message
 }
