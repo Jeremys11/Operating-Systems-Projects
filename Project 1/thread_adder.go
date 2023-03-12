@@ -9,7 +9,6 @@ import (
 	"os" //Takes in command line inputs
 	"strconv"
 	"strings"
-	"sync"
 )
 
 // Json message to send from coordinator to worker
@@ -33,9 +32,8 @@ type CoordinatorMessage struct {
 
 // Channels between workers and coordinator
 type ChannelWorker struct {
-	Work       chan []byte
-	Result     chan []byte
-	Wait_Group *sync.WaitGroup
+	Work   chan []byte
+	Result chan []byte
 }
 
 // Error checking dummy function
@@ -47,7 +45,7 @@ func check(e error) {
 
 // Coordinator
 func multi_add(M float64, fname string) {
-	wait_group := new(sync.WaitGroup)
+	//wait_group := new(sync.WaitGroup) //Waitgroup
 
 	var worker_message WorkerMessage          //Message to send to worker
 	var result_array = make([][]byte, int(M)) // Array to hold result arrays from partial_sum
@@ -73,41 +71,43 @@ func multi_add(M float64, fname string) {
 
 	index := 0 //index to move window by fragment size
 	for i := 0; i < int(M); i++ {
-
 		//If i == M, then put these into that fragment else normal window
 		if i == int(M)-1 {
 			worker_message = WorkerMessage{fname, index, index + int(fragment_size) + int(extra_numbers)}
 		} else {
 			worker_message = WorkerMessage{fname, index, index + int(fragment_size)}
 		}
-		index = index + int(fragment_size) //iterating index
 
 		//Sending job and message to worker
 		send_message, _ := json.Marshal(worker_message)
 		work <- send_message
 
 		//Creating thread with worker
-		worker := &ChannelWorker{work, result, wait_group}
+		worker := &ChannelWorker{work, result}
 		go worker.partial_sum()
-		wait_group.Add(1)
+		//go worker.partial_sum(wait_group)
+		//wait_group.Add(1)
 
 		//Return value from partial_sum
 		result_array[i] = <-result
 
-		for i := 0; i < len(result_array); i++ {
-			fmt.Println(string(result_array[i]))
-		}
+		index = index + int(fragment_size) //iterating index
 
-		//Logic after getting partial sums here
-		//If intersection for adjacent prefix and suffix contains space character, then both are whole numbers
-		//If first element, it is whole; if last element, it is whole
+	} //Outside For Loop
 
-		//Probably should wait here for all threads
-		//Computation of total sum here
+	//Logic after getting partial sums here
+	//If intersection for adjacent prefix and suffix contains space character, then both are whole numbers
+	//If first element, it is whole; if last element, it is whole
+
+	//Probably should wait here for all threads
+	//Computation of total sum here
+	for i := 0; i < len(result_array); i++ {
+		fmt.Println(string(result_array[i]))
+
 	}
 
 	//Wait here
-	wait_group.Wait()
+	//wait_group.Wait()
 }
 
 //	Worker
@@ -173,7 +173,8 @@ func (worker *ChannelWorker) partial_sum() {
 	//Return value through channel
 	send_message, _ := json.Marshal(coordinator_message)
 
-	<-worker.Wait_Group.Done()
+	//wait_group.Done() //Mark finish to prevent deadlock
+
 	worker.Result <- send_message
 }
 
