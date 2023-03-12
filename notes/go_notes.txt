@@ -1,0 +1,18 @@
+
+CREATES MOD FILE THAT CONTAINS THE VERSION FOR GO AND FILE PATH FOR IMPORTS
+
+go mod init example/user/<PROGRAM FILE NAME>
+
+
+
+
+
+go install example/user/<PROGRAM FILE NAME>
+export PATH=$PATH:$(dirname $(go list -f '{{.Target}}' .))
+
+
+
+NO OUTPUT FILE -- BUT SAVES COMPILED VERSION FOR PROGRAM
+USE FOR NON-MAIN FUNCTIONS
+
+go build
