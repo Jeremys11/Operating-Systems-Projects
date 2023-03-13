@@ -45,6 +45,7 @@ func check(e error) {
 }
 
 // Coordinator
+// Return Average of numbers in datafile
 func multi_add(M float64, fname string) {
 	wait_group := new(sync.WaitGroup) //Waitgroup
 
@@ -99,13 +100,102 @@ func multi_add(M float64, fname string) {
 	//If intersection for adjacent prefix and suffix contains space character, then both are whole numbers
 	//If first element, it is whole; if last element, it is whole
 
-	//Probably should wait here for all threads
-	//Computation of total sum here
-	for i := 0; i < len(result_array); i++ {
-		fmt.Println(string(result_array[i]))
+	// Reading file numbers into byte_file to check for space between suffix and prefix
+	// Space = Ascii 32
+	num_file, err := os.ReadFile(fname)
+	check(err)
+	byte_file := []byte(num_file)
 
+	//Computation of total sum here
+	var total_sum int = 0
+	var total_count int = 0
+	var temp = ""
+	var temp2 = ""
+	var temp_num int = 0
+	var temp_num2 int = 0
+	var preceeding_suffix = ""
+	var preceeding_end int = 0
+	var temp_result map[string]interface{}
+	for i, result := range result_array {
+		err := json.Unmarshal(result, &temp_result)
+		check(err)
+
+		total_sum += int(temp_result["Psum"].(float64))
+		total_count += int(temp_result["Pcount"].(float64))
+
+		//If first element
+		if preceeding_suffix == "" {
+			temp = fmt.Sprintf("%s%s", temp, temp_result["Prefix"].(string))
+			parsed_num, _ := strconv.ParseInt(temp, 10, 64)
+			total_sum += int(parsed_num)
+			if parsed_num != 0 {
+				total_count += 1
+			}
+			preceeding_suffix = temp_result["Suffix"].(string)
+			preceeding_end = int(temp_result["End"].(float64))
+		} else {
+			temp_num = int(temp_result["Start"].(float64))
+			if byte_file[temp_num] == 32 || byte_file[preceeding_end] == 32 {
+
+				//If start index is whitespace, add the two numbers separtely
+				//add current prefix and preceeding suffix
+				temp = fmt.Sprintf("%s%s", temp, temp_result["Prefix"].(string))
+				current_prefix, _ := strconv.ParseInt(temp, 10, 64)
+
+				temp2 = fmt.Sprintf("%s%s", temp2, preceeding_suffix)
+				num_preceeding_prefix, _ := strconv.ParseInt(temp2, 10, 64)
+
+				total_sum += int(current_prefix)
+				total_sum += int(num_preceeding_prefix)
+				if current_prefix != 0 {
+					total_count += 1
+				}
+				if num_preceeding_prefix != 0 {
+					total_count += 1
+				}
+				preceeding_suffix = temp_result["Suffix"].(string)
+				preceeding_end = int(temp_result["End"].(float64))
+			} else {
+				//concatinate the numbers and then add it
+				if temp_result["Prefix"] != "" {
+					temp = fmt.Sprintf("%s%s", temp, temp_result["Prefix"].(string))
+				} else {
+					temp = fmt.Sprintf("%s%s", temp, temp_result["Suffix"].(string))
+				}
+				temp2 = fmt.Sprintf("%s%s", temp2, preceeding_suffix)
+				concatinated_string := temp2 + temp
+				concatinated_num, _ := strconv.ParseInt(concatinated_string, 10, 64)
+
+				total_sum += int(concatinated_num)
+				if concatinated_num != 0 {
+					total_count += 1
+				}
+
+				preceeding_suffix = temp_result["Suffix"].(string)
+				preceeding_end = int(temp_result["End"].(float64))
+			}
+		}
+
+		//Last prefix adding
+		temp_num2 = int(temp_result["End"].(float64))
+		if temp_num2 == int(file_size)-1 {
+			temp = ""
+			temp = fmt.Sprintf("%s%s", temp, temp_result["Suffix"].(string))
+			last_prefix, _ := strconv.ParseInt(temp, 10, 64)
+			total_sum += int(last_prefix)
+			if last_prefix != 0 {
+				total_count += 1
+			}
+		}
+
+		temp = ""
+		temp2 = ""
+		temp_num = 0
+		temp_num2 = 0
+		fmt.Println("i", i)
 	}
 
+	fmt.Println("total sum", total_sum, "total count", total_count, "average", total_sum/total_count)
 	//Wait here
 	wait_group.Wait()
 }
@@ -142,9 +232,9 @@ func (worker *ChannelWorker) partial_sum(wait_group *sync.WaitGroup) {
 	//Getting prefix suffix pcount and psum with special cases where there are only 1 or 2 numbers
 	if len(fragment_array) == 1 {
 		prefix = ""
-		suffix = ""
-		psum, _ = strconv.Atoi(fragment_array[0])
-		pcount = 1
+		suffix = fragment_array[0]
+		psum = 0
+		pcount = 0
 	} else if len(fragment_array) == 2 {
 		prefix = fragment_array[0]
 		suffix = fragment_array[1]
@@ -168,7 +258,7 @@ func (worker *ChannelWorker) partial_sum(wait_group *sync.WaitGroup) {
 	}
 
 	//Write to a json to return to coordinator
-	coordinator_message = CoordinatorMessage{psum, pcount, prefix, suffix, start, end}
+	coordinator_message = CoordinatorMessage{psum, pcount, prefix, suffix, start, end - 1}
 
 	//Return value through channel
 	send_message, _ := json.Marshal(coordinator_message)

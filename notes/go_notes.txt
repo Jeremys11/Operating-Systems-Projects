@@ -16,3 +16,22 @@ NO OUTPUT FILE -- BUT SAVES COMPILED VERSION FOR PROGRAM
 USE FOR NON-MAIN FUNCTIONS
 
 go build
+
+{"Psum":93,"Pcount":1,"Prefix":"79","Suffix":"30","Start":0,"End":9}
+{"Psum":52,"Pcount":2,"Prefix":"10","Suffix":"1","Start":9,"End":18}
+{"Psum":581,"Pcount":1,"Prefix":"294","Suffix":"94","Start":18,"End":29}
+
+0-8
+9-17
+18-28
+
+79_93_30_
+10_3_49_1
+_294_581_94
+
+Sum 1234
+
+2	172
+6	
+9
+10
