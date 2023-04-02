@@ -2,6 +2,10 @@
 //Only user created file in this directory
 //Do not modify .pb.go files
 
+//Need to make changes here if:
+// Token definition changes
+// More rpc functions are created
+
 syntax = "proto3";
 
 package runserver;
@@ -18,11 +22,11 @@ service RunService {
 
 //Message definition
 message Token {
-    string id = 1; 
-    string name = 2;
-    uint64 low = 3;
-    uint64 mid = 4;
-    uint64 high = 5;
-    uint64 partial_value = 6;
-    uint64 final_value = 7;
+    string ID = 1; 
+    string NAME = 2;
+    uint64 LOW = 3;
+    uint64 MID = 4;
+    uint64 HIGH = 5;
+    uint64 PARTIAL_VALUE = 6;
+    uint64 FINAL_VALUE = 7;
 }

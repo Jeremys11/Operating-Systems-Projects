@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/sha256"
 	"encoding/binary"
+	"errors"
 	"flag"
 	"fmt"
 
@@ -22,8 +23,8 @@ type Token struct {
 }
 
 var (
-	port       = flag.Int("port", 50051, "The server port")
-	tokenSlice = []Token{} //Golang uses slices -- dynamic arrays
+	default_port = flag.Int("port", 50051, "The server port") //Default port 50051
+	tokenSlice   = []Token{}                                  //Golang uses slices -- dynamic arrays
 )
 
 // server is used to implement runserver.RunService
@@ -64,28 +65,116 @@ func ArgMin(name string, start uint64, stop uint64) uint64 {
 // Create a token with a with the given id
 // Reset the token's sate to undefined/null
 //
-// Returns success or fail response
-func (s *server) create(ctx context.Context, in *pb.Token) (*pb.Token, error) {}
+// Returns token and success or fail response
+func (s *server) create(ctx context.Context, in *pb.Token) (*pb.Token, error) {
+	//Check membership
+	for i := 0; i < len(tokenSlice); i++ {
+		if tokenSlice[i].ID == in.GetID() {
+			return nil, errors.New("Token already in list")
+		}
+	}
+
+	//Create new token
+	newToken := Token{ID: in.GetID()}
+
+	//Append new token to slice
+	tokenSlice = append(tokenSlice, newToken)
+
+	return &pb.Token{ID: in.GetID()}, nil
+}
 
 // drop implements runserver.drop
 // Delete token with given id
 //
-// Returns <NULL>
-func (s *server) drop(ctx context.Context, in *pb.Token) (*pb.Token, error) {}
+// Returns Token and error
+func (s *server) drop(ctx context.Context, in *pb.Token) (*pb.Token, error) {
+	//Check membership
+	length := len(tokenSlice)
+	for i := 0; i < length; i++ {
+		if tokenSlice[i].ID == in.GetID() {
+			//Remove membership and adjust slice size
+
+			//Order unimportant
+			//Replace the element to delete with the one at the end of the slice
+			//Return the n-1 fist elements
+
+			tokenSlice[i] = tokenSlice[length-1]
+			tokenSlice = tokenSlice[:length-1]
+			return &pb.Token{ID: in.GetID()}, nil
+		}
+	}
+
+	//Token not in list
+	return nil, errors.New("Token not in list")
+}
 
 // write implements runserver.write
 // Set name, low, mid, high based on id
 // Compute the partial value of the toek as argmin_x H(name, x) for x in [low,mid) and
-// Sreset final value of token
+// Reset final value of token
 //
 // Return partial value on success or fail response
-func (s *server) write(ctx context.Context, in *pb.Token) (*pb.Token, error) {}
+func (s *server) write(ctx context.Context, in *pb.Token) (*pb.Token, error) {
+	//Check membership
+	for i := 0; i < len(tokenSlice); i++ {
+		if tokenSlice[i].ID == in.GetID() {
+			tokenSlice[i].NAME = in.GetNAME()
+			tokenSlice[i].LOW = in.GetLOW()
+			tokenSlice[i].MID = in.GetMID()
+			tokenSlice[i].HIGH = in.GetHIGH()
+			tokenSlice[i].PARTIAL_VALUE = ArgMin(in.GetNAME(), in.GetLOW(), in.GetMID())
+			tokenSlice[i].FINAL_VALUE = 0
+
+			//Return token and error
+			return &pb.Token{
+				ID:            in.GetID(),
+				NAME:          in.GetNAME(),
+				LOW:           in.GetLOW(),
+				MID:           in.GetMID(),
+				HIGH:          in.GetHIGH(),
+				PARTIAL_VALUE: tokenSlice[i].PARTIAL_VALUE,
+				FINAL_VALUE:   tokenSlice[i].FINAL_VALUE,
+			}, nil
+		}
+	}
+
+	//Token not in list
+	return nil, errors.New("Token not in list")
+}
 
 // read implements runserver.read
 // Find argmin_x H(name,x) for x in [mid,high)
 //
 // Return token's final value on success or fail response
-func (s *server) read(ctx context.Context, in *pb.Token) (*pb.Token, error) {}
+func (s *server) read(ctx context.Context, in *pb.Token) (*pb.Token, error) {
+	//Check membership
+	for i := 0; i < len(tokenSlice); i++ {
+		if tokenSlice[i].ID == in.GetID() {
+			temp := ArgMin(tokenSlice[i].ID, tokenSlice[i].MID, tokenSlice[i].HIGH)
+
+			//Get min of temp final value and partial value and set final value accordingly
+			if temp <= tokenSlice[i].PARTIAL_VALUE {
+				tokenSlice[i].FINAL_VALUE = temp
+			} else {
+				tokenSlice[i].FINAL_VALUE = tokenSlice[i].PARTIAL_VALUE
+			}
+
+			//Return token and error
+			return &pb.Token{
+				ID:            in.GetID(),
+				NAME:          tokenSlice[i].NAME,
+				LOW:           tokenSlice[i].LOW,
+				MID:           tokenSlice[i].MID,
+				HIGH:          tokenSlice[i].HIGH,
+				PARTIAL_VALUE: tokenSlice[i].PARTIAL_VALUE,
+				FINAL_VALUE:   tokenSlice[i].FINAL_VALUE,
+			}, nil
+		}
+	}
+
+	//Token not in list
+	return nil, errors.New("Token not in list")
+}
 
 func main() {
 
