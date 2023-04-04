@@ -7,8 +7,12 @@ import (
 	"errors"
 	"flag"
 	"fmt"
+	"log"
+	"net"
 
 	pb "Project2/runserver"
+
+	"google.golang.org/grpc"
 )
 
 // Class Token
@@ -30,6 +34,17 @@ var (
 // server is used to implement runserver.RunService
 type server struct {
 	pb.UnimplementedRunServiceServer
+}
+
+// onClose()
+// Printout all token information on crash or close
+// Returns nothing
+func onClose() {
+	for _, token := range tokenSlice {
+		fmt.Println("ID: ", token.ID, " ", "Name: ", token.NAME, " ", "Low: ", token.LOW, " ", "Mid: ", token.MID, " ",
+			"High: ", token.HIGH, " ", "Partial value: ", token.PARTIAL_VALUE, " ", "Final Value: ", token.FINAL_VALUE)
+	}
+	fmt.Println()
 }
 
 // Hash concatentates a message and a nonce and generates a hash value.
@@ -66,10 +81,11 @@ func ArgMin(name string, start uint64, stop uint64) uint64 {
 // Reset the token's sate to undefined/null
 //
 // Returns token and success or fail response
-func (s *server) create(ctx context.Context, in *pb.Token) (*pb.Token, error) {
+func (s *server) Create(ctx context.Context, in *pb.Token) (*pb.Token, error) {
 	//Check membership
 	for i := 0; i < len(tokenSlice); i++ {
 		if tokenSlice[i].ID == in.GetID() {
+			onClose()
 			return nil, errors.New("Token already in list")
 		}
 	}
@@ -80,6 +96,7 @@ func (s *server) create(ctx context.Context, in *pb.Token) (*pb.Token, error) {
 	//Append new token to slice
 	tokenSlice = append(tokenSlice, newToken)
 
+	onClose()
 	return &pb.Token{ID: in.GetID()}, nil
 }
 
@@ -87,7 +104,7 @@ func (s *server) create(ctx context.Context, in *pb.Token) (*pb.Token, error) {
 // Delete token with given id
 //
 // Returns Token and error
-func (s *server) drop(ctx context.Context, in *pb.Token) (*pb.Token, error) {
+func (s *server) Drop(ctx context.Context, in *pb.Token) (*pb.Token, error) {
 	//Check membership
 	length := len(tokenSlice)
 	for i := 0; i < length; i++ {
@@ -100,11 +117,13 @@ func (s *server) drop(ctx context.Context, in *pb.Token) (*pb.Token, error) {
 
 			tokenSlice[i] = tokenSlice[length-1]
 			tokenSlice = tokenSlice[:length-1]
+			onClose()
 			return &pb.Token{ID: in.GetID()}, nil
 		}
 	}
 
 	//Token not in list
+	onClose()
 	return nil, errors.New("Token not in list")
 }
 
@@ -114,7 +133,7 @@ func (s *server) drop(ctx context.Context, in *pb.Token) (*pb.Token, error) {
 // Reset final value of token
 //
 // Return partial value on success or fail response
-func (s *server) write(ctx context.Context, in *pb.Token) (*pb.Token, error) {
+func (s *server) Write(ctx context.Context, in *pb.Token) (*pb.Token, error) {
 	//Check membership
 	for i := 0; i < len(tokenSlice); i++ {
 		if tokenSlice[i].ID == in.GetID() {
@@ -126,6 +145,7 @@ func (s *server) write(ctx context.Context, in *pb.Token) (*pb.Token, error) {
 			tokenSlice[i].FINAL_VALUE = 0
 
 			//Return token and error
+			onClose()
 			return &pb.Token{
 				ID:            in.GetID(),
 				NAME:          in.GetNAME(),
@@ -139,6 +159,7 @@ func (s *server) write(ctx context.Context, in *pb.Token) (*pb.Token, error) {
 	}
 
 	//Token not in list
+	onClose()
 	return nil, errors.New("Token not in list")
 }
 
@@ -146,7 +167,7 @@ func (s *server) write(ctx context.Context, in *pb.Token) (*pb.Token, error) {
 // Find argmin_x H(name,x) for x in [mid,high)
 //
 // Return token's final value on success or fail response
-func (s *server) read(ctx context.Context, in *pb.Token) (*pb.Token, error) {
+func (s *server) Read(ctx context.Context, in *pb.Token) (*pb.Token, error) {
 	//Check membership
 	for i := 0; i < len(tokenSlice); i++ {
 		if tokenSlice[i].ID == in.GetID() {
@@ -160,6 +181,7 @@ func (s *server) read(ctx context.Context, in *pb.Token) (*pb.Token, error) {
 			}
 
 			//Return token and error
+			onClose()
 			return &pb.Token{
 				ID:            in.GetID(),
 				NAME:          tokenSlice[i].NAME,
@@ -173,10 +195,22 @@ func (s *server) read(ctx context.Context, in *pb.Token) (*pb.Token, error) {
 	}
 
 	//Token not in list
+	onClose()
 	return nil, errors.New("Token not in list")
 }
 
+// Main function brings server to life
+// Code taken from helloworld example server file
 func main() {
-
-	fmt.Println("Testing Printout")
+	flag.Parse()
+	lis, err := net.Listen("tcp", fmt.Sprintf(":%d", *default_port))
+	if err != nil {
+		log.Fatalf("failed to listen: %v", err)
+	}
+	s := grpc.NewServer()
+	pb.RegisterRunServiceServer(s, &server{})
+	log.Printf("server listening at %v", lis.Addr())
+	if err := s.Serve(lis); err != nil {
+		log.Fatalf("failed to serve: %v", err)
+	}
 }

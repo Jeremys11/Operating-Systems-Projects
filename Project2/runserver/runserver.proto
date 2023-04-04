@@ -14,10 +14,10 @@ option go_package = "runserver/runserver";
 
 //Service Calls
 service RunService {
-    rpc create (Token) returns (Token);
-    rpc drop (Token) returns (Token);
-    rpc write (Token) returns (Token);
-    rpc read (Token) returns (Token);
+    rpc Create (Token) returns (Token);
+    rpc Drop (Token) returns (Token);
+    rpc Write (Token) returns (Token);
+    rpc Read (Token) returns (Token);
 }
 
 //Message definition
