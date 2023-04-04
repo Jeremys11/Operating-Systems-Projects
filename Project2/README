@@ -1,0 +1,31 @@
+Running Code from home directory:
+
+    Recommended on Bash Terminals on Linux/MacOS
+    Should work on Windows
+
+    Use to run bash testing file:
+        bash test.sh
+
+Running Server:
+
+    Starting Server:
+        go run tokenserver/tokenserver.go -port <STRING>
+
+Running Client:
+
+    Create:
+        go run tokenclient/tokenclient.go -create -id <STRING> -host <STRING> -port <STRING>
+
+    Write:
+        go run tokenclient/tokenclient.go -write -id <STRING> -name <STRING> -low <UINT64> -mid <UINT64> -high <UINT64> -host <STRING> -port <STRING>
+
+    Read:
+        go run tokenclient/tokenclient.go -read -id <STRING> -host <STRING> -port <STRING>
+
+    Drop:
+        go run tokenclient/tokenclient.go -drop -id <STRING> -host <STRING> -port <STRING>
+
+
+Possible Path Errors:
+
+    export PATH="$PATH:$(go env GOPATH)/bin"

@@ -26,10 +26,12 @@ type Token struct {
 	FINAL_VALUE   uint64
 }
 
-var (
-	default_port = flag.Int("port", 50051, "The server port") //Default port 50051
-	tokenSlice   = []Token{}                                  //Golang uses slices -- dynamic arrays
-)
+var default_port = flag.Int("port", 50051, "The server port") //Default port 50051
+// Try using Map for concurrency
+// Rewrite:
+// onClose
+// rpc functions
+var tokenMap = make(map[string]Token)
 
 // server is used to implement runserver.RunService
 type server struct {
@@ -37,12 +39,16 @@ type server struct {
 }
 
 // onClose()
-// Printout all token information on crash or close
+// Printout all token information
 // Returns nothing
 func onClose() {
-	for _, token := range tokenSlice {
-		fmt.Println("ID: ", token.ID, " ", "Name: ", token.NAME, " ", "Low: ", token.LOW, " ", "Mid: ", token.MID, " ",
-			"High: ", token.HIGH, " ", "Partial value: ", token.PARTIAL_VALUE, " ", "Final Value: ", token.FINAL_VALUE)
+	if len(tokenMap) == 0 {
+		fmt.Println("No Tokens")
+	} else {
+		for key, value := range tokenMap {
+			fmt.Println("Key:", key, "Name:", value.NAME, " ", "Low:", value.LOW, " ", "Mid:", value.MID, " ",
+				"High:", value.HIGH, " ", "Partial value:", value.PARTIAL_VALUE, " ", "Final Value:", value.FINAL_VALUE)
+		}
 	}
 	fmt.Println()
 }
@@ -83,8 +89,8 @@ func ArgMin(name string, start uint64, stop uint64) uint64 {
 // Returns token and success or fail response
 func (s *server) Create(ctx context.Context, in *pb.Token) (*pb.Token, error) {
 	//Check membership
-	for i := 0; i < len(tokenSlice); i++ {
-		if tokenSlice[i].ID == in.GetID() {
+	for key := range tokenMap {
+		if key == in.GetID() {
 			onClose()
 			return nil, errors.New("Token already in list")
 		}
@@ -93,8 +99,8 @@ func (s *server) Create(ctx context.Context, in *pb.Token) (*pb.Token, error) {
 	//Create new token
 	newToken := Token{ID: in.GetID()}
 
-	//Append new token to slice
-	tokenSlice = append(tokenSlice, newToken)
+	//Append new token to map
+	tokenMap[in.GetID()] = newToken
 
 	onClose()
 	return &pb.Token{ID: in.GetID()}, nil
@@ -106,17 +112,11 @@ func (s *server) Create(ctx context.Context, in *pb.Token) (*pb.Token, error) {
 // Returns Token and error
 func (s *server) Drop(ctx context.Context, in *pb.Token) (*pb.Token, error) {
 	//Check membership
-	length := len(tokenSlice)
-	for i := 0; i < length; i++ {
-		if tokenSlice[i].ID == in.GetID() {
-			//Remove membership and adjust slice size
+	for key := range tokenMap {
+		if key == in.GetID() {
 
-			//Order unimportant
-			//Replace the element to delete with the one at the end of the slice
-			//Return the n-1 fist elements
-
-			tokenSlice[i] = tokenSlice[length-1]
-			tokenSlice = tokenSlice[:length-1]
+			//Remove membership
+			delete(tokenMap, in.GetID())
 			onClose()
 			return &pb.Token{ID: in.GetID()}, nil
 		}
@@ -135,14 +135,16 @@ func (s *server) Drop(ctx context.Context, in *pb.Token) (*pb.Token, error) {
 // Return partial value on success or fail response
 func (s *server) Write(ctx context.Context, in *pb.Token) (*pb.Token, error) {
 	//Check membership
-	for i := 0; i < len(tokenSlice); i++ {
-		if tokenSlice[i].ID == in.GetID() {
-			tokenSlice[i].NAME = in.GetNAME()
-			tokenSlice[i].LOW = in.GetLOW()
-			tokenSlice[i].MID = in.GetMID()
-			tokenSlice[i].HIGH = in.GetHIGH()
-			tokenSlice[i].PARTIAL_VALUE = ArgMin(in.GetNAME(), in.GetLOW(), in.GetMID())
-			tokenSlice[i].FINAL_VALUE = 0
+	for key, value := range tokenMap {
+		if key == in.GetID() {
+			value.NAME = in.GetNAME()
+			value.LOW = in.GetLOW()
+			value.MID = in.GetMID()
+			value.HIGH = in.GetHIGH()
+			value.PARTIAL_VALUE = ArgMin(in.GetNAME(), in.GetLOW(), in.GetMID())
+			value.FINAL_VALUE = 0
+
+			tokenMap[key] = value //Reassign value back to key after update
 
 			//Return token and error
 			onClose()
@@ -152,8 +154,8 @@ func (s *server) Write(ctx context.Context, in *pb.Token) (*pb.Token, error) {
 				LOW:           in.GetLOW(),
 				MID:           in.GetMID(),
 				HIGH:          in.GetHIGH(),
-				PARTIAL_VALUE: tokenSlice[i].PARTIAL_VALUE,
-				FINAL_VALUE:   tokenSlice[i].FINAL_VALUE,
+				PARTIAL_VALUE: value.PARTIAL_VALUE,
+				FINAL_VALUE:   value.FINAL_VALUE,
 			}, nil
 		}
 	}
@@ -169,27 +171,29 @@ func (s *server) Write(ctx context.Context, in *pb.Token) (*pb.Token, error) {
 // Return token's final value on success or fail response
 func (s *server) Read(ctx context.Context, in *pb.Token) (*pb.Token, error) {
 	//Check membership
-	for i := 0; i < len(tokenSlice); i++ {
-		if tokenSlice[i].ID == in.GetID() {
-			temp := ArgMin(tokenSlice[i].ID, tokenSlice[i].MID, tokenSlice[i].HIGH)
+	for key, value := range tokenMap {
+		if key == in.GetID() {
+			temp := ArgMin(key, value.MID, value.HIGH)
 
 			//Get min of temp final value and partial value and set final value accordingly
-			if temp <= tokenSlice[i].PARTIAL_VALUE {
-				tokenSlice[i].FINAL_VALUE = temp
+			if temp <= value.PARTIAL_VALUE {
+				value.FINAL_VALUE = temp
 			} else {
-				tokenSlice[i].FINAL_VALUE = tokenSlice[i].PARTIAL_VALUE
+				value.FINAL_VALUE = value.PARTIAL_VALUE
 			}
+
+			tokenMap[key] = value //Reassign value back to key after update
 
 			//Return token and error
 			onClose()
 			return &pb.Token{
 				ID:            in.GetID(),
-				NAME:          tokenSlice[i].NAME,
-				LOW:           tokenSlice[i].LOW,
-				MID:           tokenSlice[i].MID,
-				HIGH:          tokenSlice[i].HIGH,
-				PARTIAL_VALUE: tokenSlice[i].PARTIAL_VALUE,
-				FINAL_VALUE:   tokenSlice[i].FINAL_VALUE,
+				NAME:          value.NAME,
+				LOW:           value.LOW,
+				MID:           value.MID,
+				HIGH:          value.HIGH,
+				PARTIAL_VALUE: value.PARTIAL_VALUE,
+				FINAL_VALUE:   value.FINAL_VALUE,
 			}, nil
 		}
 	}
