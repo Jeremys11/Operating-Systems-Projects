@@ -6,6 +6,9 @@ Running Code from home directory:
     Use to run bash testing file:
         bash test.sh
 
+        Test file creates, writes, reads, and drops on token to test for correctness.
+        Tests adding a preexisting token, writing, reading, and dropping a token to test error detection.
+
 Running Server:
 
     Starting Server:
@@ -26,6 +29,12 @@ Running Client:
         go run tokenclient/tokenclient.go -drop -id <STRING> -host <STRING> -port <STRING>
 
 
-Possible Path Errors:
+Possible Errors:
 
-    export PATH="$PATH:$(go env GOPATH)/bin"
+    Need to recompile runserver:
+
+        export PATH="$PATH:$(go env GOPATH)/bin"
+
+        protoc --go_out=. --go_opt=paths=source_relative \
+        --go-grpc_out=. --go-grpc_opt=paths=source_relative \
+        runserver/runserver.proto
