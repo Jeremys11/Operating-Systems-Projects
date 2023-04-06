@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"log"
 	"net"
+	"sync"
 
 	pb "Project2/runserver"
 
@@ -33,6 +34,9 @@ var default_port = flag.Int("port", 50051, "The server port") //Default port 500
 // rpc functions
 var tokenMap = make(map[string]Token)
 
+// Mutex for concurrency
+var mutex = &sync.RWMutex{}
+
 // server is used to implement runserver.RunService
 type server struct {
 	pb.UnimplementedRunServiceServer
@@ -42,6 +46,7 @@ type server struct {
 // Printout all token information
 // Returns nothing
 func onClose() {
+
 	if len(tokenMap) == 0 {
 		fmt.Println("No Tokens")
 	} else {
@@ -89,6 +94,8 @@ func ArgMin(name string, start uint64, stop uint64) uint64 {
 // Returns token and success or fail response
 func (s *server) Create(ctx context.Context, in *pb.Token) (*pb.Token, error) {
 	//Check membership
+	mutex.Lock()
+	defer mutex.Unlock()
 	for key := range tokenMap {
 		if key == in.GetID() {
 			onClose()
@@ -112,11 +119,14 @@ func (s *server) Create(ctx context.Context, in *pb.Token) (*pb.Token, error) {
 // Returns Token and error
 func (s *server) Drop(ctx context.Context, in *pb.Token) (*pb.Token, error) {
 	//Check membership
+	mutex.Lock()
+	defer mutex.Unlock()
 	for key := range tokenMap {
 		if key == in.GetID() {
 
 			//Remove membership
 			delete(tokenMap, in.GetID())
+
 			onClose()
 			return &pb.Token{ID: in.GetID()}, nil
 		}
@@ -135,8 +145,11 @@ func (s *server) Drop(ctx context.Context, in *pb.Token) (*pb.Token, error) {
 // Return partial value on success or fail response
 func (s *server) Write(ctx context.Context, in *pb.Token) (*pb.Token, error) {
 	//Check membership
+	mutex.Lock()
+	defer mutex.Unlock()
 	for key, value := range tokenMap {
 		if key == in.GetID() {
+
 			value.NAME = in.GetNAME()
 			value.LOW = in.GetLOW()
 			value.MID = in.GetMID()
@@ -171,6 +184,8 @@ func (s *server) Write(ctx context.Context, in *pb.Token) (*pb.Token, error) {
 // Return token's final value on success or fail response
 func (s *server) Read(ctx context.Context, in *pb.Token) (*pb.Token, error) {
 	//Check membership
+	mutex.Lock()
+	defer mutex.Unlock()
 	for key, value := range tokenMap {
 		if key == in.GetID() {
 			temp := ArgMin(key, value.MID, value.HIGH)
