@@ -35,7 +35,7 @@ var default_port = flag.Int("port", 50051, "The server port") //Default port 500
 var tokenMap = make(map[string]Token)
 
 // Mutex for concurrency
-var mutex = &sync.RWMutex{}
+var mutex = &sync.Mutex{}
 
 // server is used to implement runserver.RunService
 type server struct {
