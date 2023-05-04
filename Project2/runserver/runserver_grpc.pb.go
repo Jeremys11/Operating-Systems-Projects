@@ -31,6 +31,7 @@ const (
 	RunService_Drop_FullMethodName   = "/runserver.RunService/Drop"
 	RunService_Write_FullMethodName  = "/runserver.RunService/Write"
 	RunService_Read_FullMethodName   = "/runserver.RunService/Read"
+	RunService_Test_FullMethodName   = "/runserver.RunService/Test"
 )
 
 // RunServiceClient is the client API for RunService service.
@@ -41,6 +42,7 @@ type RunServiceClient interface {
 	Drop(ctx context.Context, in *Token, opts ...grpc.CallOption) (*Token, error)
 	Write(ctx context.Context, in *Token, opts ...grpc.CallOption) (*Token, error)
 	Read(ctx context.Context, in *Token, opts ...grpc.CallOption) (*Token, error)
+	Test(ctx context.Context, in *Token, opts ...grpc.CallOption) (*Token, error)
 }
 
 type runServiceClient struct {
@@ -87,6 +89,15 @@ func (c *runServiceClient) Read(ctx context.Context, in *Token, opts ...grpc.Cal
 	return out, nil
 }
 
+func (c *runServiceClient) Test(ctx context.Context, in *Token, opts ...grpc.CallOption) (*Token, error) {
+	out := new(Token)
+	err := c.cc.Invoke(ctx, RunService_Test_FullMethodName, in, out, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 // RunServiceServer is the server API for RunService service.
 // All implementations must embed UnimplementedRunServiceServer
 // for forward compatibility
@@ -95,6 +106,7 @@ type RunServiceServer interface {
 	Drop(context.Context, *Token) (*Token, error)
 	Write(context.Context, *Token) (*Token, error)
 	Read(context.Context, *Token) (*Token, error)
+	Test(context.Context, *Token) (*Token, error)
 	mustEmbedUnimplementedRunServiceServer()
 }
 
@@ -113,6 +125,9 @@ func (UnimplementedRunServiceServer) Write(context.Context, *Token) (*Token, err
 }
 func (UnimplementedRunServiceServer) Read(context.Context, *Token) (*Token, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method Read not implemented")
+}
+func (UnimplementedRunServiceServer) Test(context.Context, *Token) (*Token, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method Test not implemented")
 }
 func (UnimplementedRunServiceServer) mustEmbedUnimplementedRunServiceServer() {}
 
@@ -199,6 +214,24 @@ func _RunService_Read_Handler(srv interface{}, ctx context.Context, dec func(int
 	return interceptor(ctx, in, info, handler)
 }
 
+func _RunService_Test_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(Token)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(RunServiceServer).Test(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: RunService_Test_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(RunServiceServer).Test(ctx, req.(*Token))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 // RunService_ServiceDesc is the grpc.ServiceDesc for RunService service.
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
@@ -221,6 +254,10 @@ var RunService_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "Read",
 			Handler:    _RunService_Read_Handler,
+		},
+		{
+			MethodName: "Test",
+			Handler:    _RunService_Test_Handler,
 		},
 	},
 	Streams:  []grpc.StreamDesc{},

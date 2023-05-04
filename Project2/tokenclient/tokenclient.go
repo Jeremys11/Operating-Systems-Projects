@@ -21,6 +21,7 @@ var (
 	dropOp   = flag.Bool("drop", false, "Drop Op")
 	writeOp  = flag.Bool("write", false, "Write Op")
 	readOp   = flag.Bool("read", false, "Read Op")
+	testOp   = flag.Bool("test", false, "Test Op")
 
 	idVal   = flag.String("id", "", "ID value")
 	nameVal = flag.String("name", "", "Name value")
@@ -83,7 +84,7 @@ func main() {
 		if err != nil {
 			log.Fatal("Failed to write", err)
 		} else {
-			log.Print("Successful Write", val.ID)
+			log.Print("Successful Write", val.ID, " Partial Value: ", val.PARTIAL_VALUE)
 		}
 	}
 	//Read
@@ -94,7 +95,18 @@ func main() {
 		if err != nil {
 			log.Fatal("Failed to read", err)
 		} else {
-			log.Print("Successful Read", val.ID)
+			log.Print("Successful Read", val.ID, " Partial Value: ", val.PARTIAL_VALUE)
+		}
+	}
+	//Test
+	if *testOp {
+		val, err := c.Test(ctx, &pb.Token{
+			ID: *idVal,
+		})
+		if err != nil {
+			log.Fatal("Failed to test", err)
+		} else {
+			log.Print("Successful Test", val.ID)
 		}
 	}
 

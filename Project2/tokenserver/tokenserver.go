@@ -9,7 +9,6 @@ import (
 	"fmt"
 	"log"
 	"net"
-	"sync"
 
 	pb "Project2/runserver"
 
@@ -25,7 +24,17 @@ type Token struct {
 	HIGH          uint64
 	PARTIAL_VALUE uint64
 	FINAL_VALUE   uint64
+	WRITER        map[string]string
+	READER        map[string]string
 }
+
+/*
+Extend each token to include the access points (IP address and port number) of its single writer
+and multiple reader nodes; these nodes constitute the replication scheme of the token.
+	token: <id>
+	writer: <access-point>
+	readers: array of <access-point>s
+*/
 
 var default_port = flag.Int("port", 50051, "The server port") //Default port 50051
 // Try using Map for concurrency
@@ -35,11 +44,22 @@ var default_port = flag.Int("port", 50051, "The server port") //Default port 500
 var tokenMap = make(map[string]Token)
 
 // Mutex for concurrency
-var mutex = &sync.Mutex{}
+//var mutex = &sync.Mutex{}
 
 // server is used to implement runserver.RunService
 type server struct {
 	pb.UnimplementedRunServiceServer
+}
+
+// Test function
+// Returns nothing
+func (s *server) Test(ctx context.Context, in *pb.Token) (*pb.Token, error) {
+	for key, value := range tokenMap {
+		fmt.Println(key)
+		fmt.Println(value.WRITER)
+		fmt.Println(value.READER)
+	}
+	return nil, nil
 }
 
 // onClose()
@@ -94,8 +114,8 @@ func ArgMin(name string, start uint64, stop uint64) uint64 {
 // Returns token and success or fail response
 func (s *server) Create(ctx context.Context, in *pb.Token) (*pb.Token, error) {
 	//Check membership
-	mutex.Lock()
-	defer mutex.Unlock()
+	//mutex.Lock()
+	//defer mutex.Unlock()
 	for key := range tokenMap {
 		if key == in.GetID() {
 			onClose()
@@ -119,8 +139,8 @@ func (s *server) Create(ctx context.Context, in *pb.Token) (*pb.Token, error) {
 // Returns Token and error
 func (s *server) Drop(ctx context.Context, in *pb.Token) (*pb.Token, error) {
 	//Check membership
-	mutex.Lock()
-	defer mutex.Unlock()
+	//mutex.Lock()
+	//defer mutex.Unlock()
 	for key := range tokenMap {
 		if key == in.GetID() {
 
@@ -145,8 +165,8 @@ func (s *server) Drop(ctx context.Context, in *pb.Token) (*pb.Token, error) {
 // Return partial value on success or fail response
 func (s *server) Write(ctx context.Context, in *pb.Token) (*pb.Token, error) {
 	//Check membership
-	mutex.Lock()
-	defer mutex.Unlock()
+	//mutex.Lock()
+	//defer mutex.Unlock()
 	for key, value := range tokenMap {
 		if key == in.GetID() {
 
@@ -184,8 +204,8 @@ func (s *server) Write(ctx context.Context, in *pb.Token) (*pb.Token, error) {
 // Return token's final value on success or fail response
 func (s *server) Read(ctx context.Context, in *pb.Token) (*pb.Token, error) {
 	//Check membership
-	mutex.Lock()
-	defer mutex.Unlock()
+	//mutex.Lock()
+	//defer mutex.Unlock()
 	for key, value := range tokenMap {
 		if key == in.GetID() {
 			temp := ArgMin(key, value.MID, value.HIGH)
