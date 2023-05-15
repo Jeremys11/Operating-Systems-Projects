@@ -1,16 +1,22 @@
 package main
 
 import (
+	pb "Project2/runserver"
+	"bytes"
 	"context"
 	"crypto/sha256"
 	"encoding/binary"
 	"errors"
 	"flag"
 	"fmt"
+	"io"
+	"io/ioutil"
 	"log"
 	"net"
+	"sync"
+	"time"
 
-	pb "Project2/runserver"
+	"gopkg.in/yaml.v3"
 
 	"google.golang.org/grpc"
 )
@@ -24,42 +30,75 @@ type Token struct {
 	HIGH          uint64
 	PARTIAL_VALUE uint64
 	FINAL_VALUE   uint64
-	WRITER        map[string]string
-	READER        map[string]string
 }
 
-/*
-Extend each token to include the access points (IP address and port number) of its single writer
-and multiple reader nodes; these nodes constitute the replication scheme of the token.
-	token: <id>
-	writer: <access-point>
-	readers: array of <access-point>s
-*/
+// Class TokenMutex
+type TokenMutex struct {
+	TOKENMAP Token
+	RWMUTEX  sync.RWMutex
+}
 
-var default_port = flag.Int("port", 50051, "The server port") //Default port 50051
-// Try using Map for concurrency
-// Rewrite:
-// onClose
-// rpc functions
+// Class YamlInfo
+// Holds data read from yaml file about token
+type YamlInfo struct {
+	TOKEN   string `yaml:"token"`
+	WRITER  string `yaml:"writer"`
+	READERS string `yaml:"readers"`
+}
+
+// Name of yaml file containing token information
+var yaml_name = "token.yaml"
+
+// Default port 50051
+var default_port = flag.Int("port", 50051, "The server port")
+
+// Holds database of tokens
 var tokenMap = make(map[string]Token)
 
-// Mutex for concurrency
-//var mutex = &sync.Mutex{}
+// Hold record of operations
+var operationSlice []string
+
+// Fail-Silent Emulation
+// If crashBool = false, set crashBool to true and continue
+// If crashBool = true, set crashBool to false and emulate fail-silent
+var crashBool bool
 
 // server is used to implement runserver.RunService
 type server struct {
 	pb.UnimplementedRunServiceServer
 }
 
-// Test function
-// Returns nothing
-func (s *server) Test(ctx context.Context, in *pb.Token) (*pb.Token, error) {
-	for key, value := range tokenMap {
-		fmt.Println(key)
-		fmt.Println(value.WRITER)
-		fmt.Println(value.READER)
+// readYaml(yaml_file string, token string)
+// Reads yaml file with token id, writer, and reader list
+// Returns info for token with id match
+func readYaml(yaml_name string, token string) YamlInfo {
+
+	//Read yaml file
+	yaml_file, err := ioutil.ReadFile(yaml_name)
+	if err != nil {
+		log.Fatal(err)
 	}
-	return nil, nil
+
+	//Decoder to parse yaml file
+	decoder := yaml.NewDecoder(bytes.NewBufferString(string(yaml_file)))
+
+	//Parsing through yaml file
+	for {
+		var yamlObject YamlInfo
+		err = decoder.Decode(&yamlObject)
+		if err != nil {
+			if err == io.EOF {
+				break
+			}
+			panic(errors.New("failed to decode yaml file"))
+		}
+
+		//found token id match, returning token info
+		if yamlObject.TOKEN == token {
+			return yamlObject
+		}
+	}
+	return YamlInfo{}
 }
 
 // onClose()
@@ -114,8 +153,6 @@ func ArgMin(name string, start uint64, stop uint64) uint64 {
 // Returns token and success or fail response
 func (s *server) Create(ctx context.Context, in *pb.Token) (*pb.Token, error) {
 	//Check membership
-	//mutex.Lock()
-	//defer mutex.Unlock()
 	for key := range tokenMap {
 		if key == in.GetID() {
 			onClose()
@@ -125,6 +162,12 @@ func (s *server) Create(ctx context.Context, in *pb.Token) (*pb.Token, error) {
 
 	//Create new token
 	newToken := Token{ID: in.GetID()}
+
+	//Lock token before adding
+	//Get yaml info for reader/writers
+	//Update token_list
+	//Create reading servers if writer
+	//Send rpc calls to update token_list for readers
 
 	//Append new token to map
 	tokenMap[in.GetID()] = newToken
@@ -139,8 +182,6 @@ func (s *server) Create(ctx context.Context, in *pb.Token) (*pb.Token, error) {
 // Returns Token and error
 func (s *server) Drop(ctx context.Context, in *pb.Token) (*pb.Token, error) {
 	//Check membership
-	//mutex.Lock()
-	//defer mutex.Unlock()
 	for key := range tokenMap {
 		if key == in.GetID() {
 
@@ -165,10 +206,13 @@ func (s *server) Drop(ctx context.Context, in *pb.Token) (*pb.Token, error) {
 // Return partial value on success or fail response
 func (s *server) Write(ctx context.Context, in *pb.Token) (*pb.Token, error) {
 	//Check membership
-	//mutex.Lock()
-	//defer mutex.Unlock()
 	for key, value := range tokenMap {
 		if key == in.GetID() {
+
+			//Lock token before modification
+			//Get yaml info for reader/writers
+			//Update token_list
+			//Send rpc calls to update token_list for readers
 
 			value.NAME = in.GetNAME()
 			value.LOW = in.GetLOW()
@@ -203,33 +247,54 @@ func (s *server) Write(ctx context.Context, in *pb.Token) (*pb.Token, error) {
 //
 // Return token's final value on success or fail response
 func (s *server) Read(ctx context.Context, in *pb.Token) (*pb.Token, error) {
-	//Check membership
-	//mutex.Lock()
-	//defer mutex.Unlock()
-	for key, value := range tokenMap {
-		if key == in.GetID() {
-			temp := ArgMin(key, value.MID, value.HIGH)
 
-			//Get min of temp final value and partial value and set final value accordingly
-			if temp <= value.PARTIAL_VALUE {
-				value.FINAL_VALUE = temp
-			} else {
-				value.FINAL_VALUE = value.PARTIAL_VALUE
+	//Emulate fail-silent every second instruction
+	if crashBool == true {
+		crashBool = false
+		time.Sleep(5 * time.Second)
+		return &pb.Token{}, nil
+	} else {
+		//Reset CrashBool to true
+		crashBool = true
+
+		//Check membership
+		for key, value := range tokenMap {
+			if key == in.GetID() {
+
+				//Check for previous write operation performed
+				if value.PARTIAL_VALUE != 0 {
+					//Lock token before modification
+					//Get yaml info for reader/writers
+					//Update token_list
+					//Send rpc calls to update token_list for readers
+
+					temp := ArgMin(key, value.MID, value.HIGH)
+
+					//Get min of temp final value and partial value and set final value accordingly
+					if temp <= value.PARTIAL_VALUE {
+						value.FINAL_VALUE = temp
+					} else {
+						value.FINAL_VALUE = value.PARTIAL_VALUE
+					}
+
+					tokenMap[key] = value //Reassign value back to key after update
+
+					//Return token and error
+					onClose()
+					return &pb.Token{
+						ID:            in.GetID(),
+						NAME:          value.NAME,
+						LOW:           value.LOW,
+						MID:           value.MID,
+						HIGH:          value.HIGH,
+						PARTIAL_VALUE: value.PARTIAL_VALUE,
+						FINAL_VALUE:   value.FINAL_VALUE,
+					}, nil
+					//Error - no write before read
+				} else {
+					return nil, errors.New("must have written token at least once before read")
+				}
 			}
-
-			tokenMap[key] = value //Reassign value back to key after update
-
-			//Return token and error
-			onClose()
-			return &pb.Token{
-				ID:            in.GetID(),
-				NAME:          value.NAME,
-				LOW:           value.LOW,
-				MID:           value.MID,
-				HIGH:          value.HIGH,
-				PARTIAL_VALUE: value.PARTIAL_VALUE,
-				FINAL_VALUE:   value.FINAL_VALUE,
-			}, nil
 		}
 	}
 

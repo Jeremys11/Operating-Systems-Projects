@@ -1,0 +1,4 @@
+Emulate fail-silent behavior for the server nodes as follows. A server node may “crash-stop” for
+operations on a particular token X (for which it is a reader or writer) at some time t by indefinitely
+postponing a response to all operations on X it receives after time t. A server may still be
+responding as usual to requests on other tokens for which it is a reader or writer.
