@@ -27,22 +27,22 @@ import (
 const _ = grpc.SupportPackageIsVersion7
 
 const (
-	RunService_Create_FullMethodName = "/runserver.RunService/Create"
-	RunService_Drop_FullMethodName   = "/runserver.RunService/Drop"
-	RunService_Write_FullMethodName  = "/runserver.RunService/Write"
-	RunService_Read_FullMethodName   = "/runserver.RunService/Read"
-	RunService_Test_FullMethodName   = "/runserver.RunService/Test"
+	RunService_Create_FullMethodName        = "/runserver.RunService/Create"
+	RunService_Drop_FullMethodName          = "/runserver.RunService/Drop"
+	RunService_Write_FullMethodName         = "/runserver.RunService/Write"
+	RunService_Read_FullMethodName          = "/runserver.RunService/Read"
+	RunService_GetFinalValue_FullMethodName = "/runserver.RunService/GetFinalValue"
 )
 
 // RunServiceClient is the client API for RunService service.
 //
 // For semantics around ctx use and closing/ending streaming RPCs, please refer to https://pkg.go.dev/google.golang.org/grpc/?tab=doc#ClientConn.NewStream.
 type RunServiceClient interface {
-	Create(ctx context.Context, in *Token, opts ...grpc.CallOption) (*Token, error)
-	Drop(ctx context.Context, in *Token, opts ...grpc.CallOption) (*Token, error)
-	Write(ctx context.Context, in *Token, opts ...grpc.CallOption) (*Token, error)
-	Read(ctx context.Context, in *Token, opts ...grpc.CallOption) (*Token, error)
-	Test(ctx context.Context, in *Token, opts ...grpc.CallOption) (*Token, error)
+	Create(ctx context.Context, in *RPCHelper, opts ...grpc.CallOption) (*Token, error)
+	Drop(ctx context.Context, in *RPCHelper, opts ...grpc.CallOption) (*Token, error)
+	Write(ctx context.Context, in *RPCHelper, opts ...grpc.CallOption) (*Token, error)
+	Read(ctx context.Context, in *RPCHelper, opts ...grpc.CallOption) (*Token, error)
+	GetFinalValue(ctx context.Context, in *RPCHelper, opts ...grpc.CallOption) (*Write_Record, error)
 }
 
 type runServiceClient struct {
@@ -53,7 +53,7 @@ func NewRunServiceClient(cc grpc.ClientConnInterface) RunServiceClient {
 	return &runServiceClient{cc}
 }
 
-func (c *runServiceClient) Create(ctx context.Context, in *Token, opts ...grpc.CallOption) (*Token, error) {
+func (c *runServiceClient) Create(ctx context.Context, in *RPCHelper, opts ...grpc.CallOption) (*Token, error) {
 	out := new(Token)
 	err := c.cc.Invoke(ctx, RunService_Create_FullMethodName, in, out, opts...)
 	if err != nil {
@@ -62,7 +62,7 @@ func (c *runServiceClient) Create(ctx context.Context, in *Token, opts ...grpc.C
 	return out, nil
 }
 
-func (c *runServiceClient) Drop(ctx context.Context, in *Token, opts ...grpc.CallOption) (*Token, error) {
+func (c *runServiceClient) Drop(ctx context.Context, in *RPCHelper, opts ...grpc.CallOption) (*Token, error) {
 	out := new(Token)
 	err := c.cc.Invoke(ctx, RunService_Drop_FullMethodName, in, out, opts...)
 	if err != nil {
@@ -71,7 +71,7 @@ func (c *runServiceClient) Drop(ctx context.Context, in *Token, opts ...grpc.Cal
 	return out, nil
 }
 
-func (c *runServiceClient) Write(ctx context.Context, in *Token, opts ...grpc.CallOption) (*Token, error) {
+func (c *runServiceClient) Write(ctx context.Context, in *RPCHelper, opts ...grpc.CallOption) (*Token, error) {
 	out := new(Token)
 	err := c.cc.Invoke(ctx, RunService_Write_FullMethodName, in, out, opts...)
 	if err != nil {
@@ -80,7 +80,7 @@ func (c *runServiceClient) Write(ctx context.Context, in *Token, opts ...grpc.Ca
 	return out, nil
 }
 
-func (c *runServiceClient) Read(ctx context.Context, in *Token, opts ...grpc.CallOption) (*Token, error) {
+func (c *runServiceClient) Read(ctx context.Context, in *RPCHelper, opts ...grpc.CallOption) (*Token, error) {
 	out := new(Token)
 	err := c.cc.Invoke(ctx, RunService_Read_FullMethodName, in, out, opts...)
 	if err != nil {
@@ -89,9 +89,9 @@ func (c *runServiceClient) Read(ctx context.Context, in *Token, opts ...grpc.Cal
 	return out, nil
 }
 
-func (c *runServiceClient) Test(ctx context.Context, in *Token, opts ...grpc.CallOption) (*Token, error) {
-	out := new(Token)
-	err := c.cc.Invoke(ctx, RunService_Test_FullMethodName, in, out, opts...)
+func (c *runServiceClient) GetFinalValue(ctx context.Context, in *RPCHelper, opts ...grpc.CallOption) (*Write_Record, error) {
+	out := new(Write_Record)
+	err := c.cc.Invoke(ctx, RunService_GetFinalValue_FullMethodName, in, out, opts...)
 	if err != nil {
 		return nil, err
 	}
@@ -102,11 +102,11 @@ func (c *runServiceClient) Test(ctx context.Context, in *Token, opts ...grpc.Cal
 // All implementations must embed UnimplementedRunServiceServer
 // for forward compatibility
 type RunServiceServer interface {
-	Create(context.Context, *Token) (*Token, error)
-	Drop(context.Context, *Token) (*Token, error)
-	Write(context.Context, *Token) (*Token, error)
-	Read(context.Context, *Token) (*Token, error)
-	Test(context.Context, *Token) (*Token, error)
+	Create(context.Context, *RPCHelper) (*Token, error)
+	Drop(context.Context, *RPCHelper) (*Token, error)
+	Write(context.Context, *RPCHelper) (*Token, error)
+	Read(context.Context, *RPCHelper) (*Token, error)
+	GetFinalValue(context.Context, *RPCHelper) (*Write_Record, error)
 	mustEmbedUnimplementedRunServiceServer()
 }
 
@@ -114,20 +114,20 @@ type RunServiceServer interface {
 type UnimplementedRunServiceServer struct {
 }
 
-func (UnimplementedRunServiceServer) Create(context.Context, *Token) (*Token, error) {
+func (UnimplementedRunServiceServer) Create(context.Context, *RPCHelper) (*Token, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method Create not implemented")
 }
-func (UnimplementedRunServiceServer) Drop(context.Context, *Token) (*Token, error) {
+func (UnimplementedRunServiceServer) Drop(context.Context, *RPCHelper) (*Token, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method Drop not implemented")
 }
-func (UnimplementedRunServiceServer) Write(context.Context, *Token) (*Token, error) {
+func (UnimplementedRunServiceServer) Write(context.Context, *RPCHelper) (*Token, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method Write not implemented")
 }
-func (UnimplementedRunServiceServer) Read(context.Context, *Token) (*Token, error) {
+func (UnimplementedRunServiceServer) Read(context.Context, *RPCHelper) (*Token, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method Read not implemented")
 }
-func (UnimplementedRunServiceServer) Test(context.Context, *Token) (*Token, error) {
-	return nil, status.Errorf(codes.Unimplemented, "method Test not implemented")
+func (UnimplementedRunServiceServer) GetFinalValue(context.Context, *RPCHelper) (*Write_Record, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method GetFinalValue not implemented")
 }
 func (UnimplementedRunServiceServer) mustEmbedUnimplementedRunServiceServer() {}
 
@@ -143,7 +143,7 @@ func RegisterRunServiceServer(s grpc.ServiceRegistrar, srv RunServiceServer) {
 }
 
 func _RunService_Create_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
-	in := new(Token)
+	in := new(RPCHelper)
 	if err := dec(in); err != nil {
 		return nil, err
 	}
@@ -155,13 +155,13 @@ func _RunService_Create_Handler(srv interface{}, ctx context.Context, dec func(i
 		FullMethod: RunService_Create_FullMethodName,
 	}
 	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
-		return srv.(RunServiceServer).Create(ctx, req.(*Token))
+		return srv.(RunServiceServer).Create(ctx, req.(*RPCHelper))
 	}
 	return interceptor(ctx, in, info, handler)
 }
 
 func _RunService_Drop_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
-	in := new(Token)
+	in := new(RPCHelper)
 	if err := dec(in); err != nil {
 		return nil, err
 	}
@@ -173,13 +173,13 @@ func _RunService_Drop_Handler(srv interface{}, ctx context.Context, dec func(int
 		FullMethod: RunService_Drop_FullMethodName,
 	}
 	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
-		return srv.(RunServiceServer).Drop(ctx, req.(*Token))
+		return srv.(RunServiceServer).Drop(ctx, req.(*RPCHelper))
 	}
 	return interceptor(ctx, in, info, handler)
 }
 
 func _RunService_Write_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
-	in := new(Token)
+	in := new(RPCHelper)
 	if err := dec(in); err != nil {
 		return nil, err
 	}
@@ -191,13 +191,13 @@ func _RunService_Write_Handler(srv interface{}, ctx context.Context, dec func(in
 		FullMethod: RunService_Write_FullMethodName,
 	}
 	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
-		return srv.(RunServiceServer).Write(ctx, req.(*Token))
+		return srv.(RunServiceServer).Write(ctx, req.(*RPCHelper))
 	}
 	return interceptor(ctx, in, info, handler)
 }
 
 func _RunService_Read_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
-	in := new(Token)
+	in := new(RPCHelper)
 	if err := dec(in); err != nil {
 		return nil, err
 	}
@@ -209,25 +209,25 @@ func _RunService_Read_Handler(srv interface{}, ctx context.Context, dec func(int
 		FullMethod: RunService_Read_FullMethodName,
 	}
 	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
-		return srv.(RunServiceServer).Read(ctx, req.(*Token))
+		return srv.(RunServiceServer).Read(ctx, req.(*RPCHelper))
 	}
 	return interceptor(ctx, in, info, handler)
 }
 
-func _RunService_Test_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
-	in := new(Token)
+func _RunService_GetFinalValue_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(RPCHelper)
 	if err := dec(in); err != nil {
 		return nil, err
 	}
 	if interceptor == nil {
-		return srv.(RunServiceServer).Test(ctx, in)
+		return srv.(RunServiceServer).GetFinalValue(ctx, in)
 	}
 	info := &grpc.UnaryServerInfo{
 		Server:     srv,
-		FullMethod: RunService_Test_FullMethodName,
+		FullMethod: RunService_GetFinalValue_FullMethodName,
 	}
 	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
-		return srv.(RunServiceServer).Test(ctx, req.(*Token))
+		return srv.(RunServiceServer).GetFinalValue(ctx, req.(*RPCHelper))
 	}
 	return interceptor(ctx, in, info, handler)
 }
@@ -256,8 +256,8 @@ var RunService_ServiceDesc = grpc.ServiceDesc{
 			Handler:    _RunService_Read_Handler,
 		},
 		{
-			MethodName: "Test",
-			Handler:    _RunService_Test_Handler,
+			MethodName: "GetFinalValue",
+			Handler:    _RunService_GetFinalValue_Handler,
 		},
 	},
 	Streams:  []grpc.StreamDesc{},

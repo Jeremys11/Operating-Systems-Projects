@@ -8,16 +8,40 @@
 
 syntax = "proto3";
 
+import "google/protobuf/timestamp.proto";
+
 package runserver;
 
 option go_package = "runserver/runserver";
 
 //Service Calls
 service RunService {
-    rpc Create (Token) returns (Token);
-    rpc Drop (Token) returns (Token);
-    rpc Write (Token) returns (Token);
-    rpc Read (Token) returns (Token);
+    rpc Create (RPCHelper) returns (Token);
+    rpc Drop (RPCHelper) returns (Token);
+    rpc Write (RPCHelper) returns (Token);
+    rpc Read (RPCHelper) returns (Token);
+    rpc GetFinalValue(RPCHelper) returns (Write_Record);
+}
+
+// Message WRITE_RECORD
+message Write_Record {
+	uint64 FINAL_VALUE = 1;
+	google.protobuf.Timestamp TIME = 2;
+}
+
+//Message RPCHelper
+//ID TOKEN
+//SERVERTYPE = WRITER,READER
+message RPCHelper{
+    string ID = 1;
+    string NAME = 2;
+    uint64 LOW = 3;
+    uint64 MID = 4;
+    uint64 HIGH = 5;
+    uint64 PARTIAL_VALUE = 6;
+    uint64 FINAL_VALUE = 7;
+    string SERVERTYPE = 8;
+    string ADDRESS = 9;
 }
 
 //Message Token definition
@@ -29,12 +53,4 @@ message Token {
     uint64 HIGH = 5;
     uint64 PARTIAL_VALUE = 6;
     uint64 FINAL_VALUE = 7;
-    //Access_Point WRITER = 8;
-    //repeated Access_Point READER = 9;
 }
-
-//Message Access point definition
-//message Access_Point {
-//    string IP_ADDR = 1;
-//    string PORT = 2;
-//}

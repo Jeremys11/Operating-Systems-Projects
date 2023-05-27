@@ -13,38 +13,51 @@ import (
 	"io/ioutil"
 	"log"
 	"net"
-	"sync"
+	"strings"
 	"time"
 
 	"gopkg.in/yaml.v3"
 
 	"google.golang.org/grpc"
+	"google.golang.org/grpc/credentials/insecure"
+	"google.golang.org/protobuf/types/known/timestamppb"
 )
 
 // Class Token
 type Token struct {
-	ID            string
-	NAME          string
-	LOW           uint64
-	MID           uint64
-	HIGH          uint64
-	PARTIAL_VALUE uint64
-	FINAL_VALUE   uint64
-}
-
-// Class TokenMutex
-type TokenMutex struct {
-	TOKENMAP Token
-	RWMUTEX  sync.RWMutex
+	ID              string
+	NAME            string
+	LOW             uint64
+	MID             uint64
+	HIGH            uint64
+	PARTIAL_VALUE   uint64
+	FINAL_VALUE     uint64
+	TIME_LAST_WRITE time.Time
 }
 
 // Class YamlInfo
-// Holds data read from yaml file about token
+// Holds data parsed from Yaml file
 type YamlInfo struct {
 	TOKEN   string `yaml:"token"`
 	WRITER  string `yaml:"writer"`
 	READERS string `yaml:"readers"`
 }
+
+type ParsedYaml struct {
+	TOKEN        string
+	WRITER       string
+	READER_ARRAY []string
+}
+
+// Class WRITE_RECORD
+type WRITE_RECORD struct {
+	TOKEN       string
+	FINAL_VALUE uint64
+	TIME        time.Time
+}
+
+// Holds records of all writes
+var writeMap = make(map[string]WRITE_RECORD)
 
 // Name of yaml file containing token information
 var yaml_name = "token.yaml"
@@ -55,13 +68,8 @@ var default_port = flag.Int("port", 50051, "The server port")
 // Holds database of tokens
 var tokenMap = make(map[string]Token)
 
-// Hold record of operations
-var operationSlice []string
-
 // Fail-Silent Emulation
-// If crashBool = false, set crashBool to true and continue
-// If crashBool = true, set crashBool to false and emulate fail-silent
-var crashBool bool
+var crashToken = "2"
 
 // server is used to implement runserver.RunService
 type server struct {
@@ -71,7 +79,7 @@ type server struct {
 // readYaml(yaml_file string, token string)
 // Reads yaml file with token id, writer, and reader list
 // Returns info for token with id match
-func readYaml(yaml_name string, token string) YamlInfo {
+func readYaml(yaml_name string, token string) ParsedYaml {
 
 	//Read yaml file
 	yaml_file, err := ioutil.ReadFile(yaml_name)
@@ -95,10 +103,45 @@ func readYaml(yaml_name string, token string) YamlInfo {
 
 		//found token id match, returning token info
 		if yamlObject.TOKEN == token {
-			return yamlObject
+			var readers []string
+			var writers []string
+
+			readers = strings.Split(yamlObject.READERS, " ")
+			writers = strings.Split(yamlObject.WRITER, " ")
+
+			var newReaders []string
+			var newWriters []string
+
+			//Parse for readers
+			for _, addr := range readers {
+				port := strings.Index(addr, ":")
+				if addr[len(addr)-1:] == "," {
+					newReaders = append(newReaders, addr[port+1:len(addr)-1])
+				} else {
+					newReaders = append(newReaders, addr[port+1:])
+				}
+			}
+
+			//Parse for writer
+			for _, addr := range writers {
+				port := strings.Index(addr, ":")
+				if addr[len(addr)-1:] == "," {
+					newWriters = append(newWriters, addr[port+1:len(addr)-1])
+				} else {
+					newWriters = append(newWriters, addr[port+1:])
+				}
+			}
+
+			var parsedYaml ParsedYaml
+			parsedYaml.TOKEN = yamlObject.TOKEN
+			parsedYaml.READER_ARRAY = newReaders
+			parsedYaml.WRITER = newWriters[0]
+
+			// Return the list of ports
+			return parsedYaml
 		}
 	}
-	return YamlInfo{}
+	return ParsedYaml{}
 }
 
 // onClose()
@@ -146,12 +189,27 @@ func ArgMin(name string, start uint64, stop uint64) uint64 {
 	return minX
 }
 
+// Get final values and timing
+//
+// Returns token
+func (s *server) GetFinalValue(ctx context.Context, in *pb.RPCHelper) (*pb.Write_Record, error) {
+	for key := range writeMap {
+		if key == in.GetID() {
+			return &pb.Write_Record{
+				FINAL_VALUE: writeMap[key].FINAL_VALUE,
+				TIME:        timestamppb.New(writeMap[key].TIME),
+			}, nil
+		}
+	}
+	return &pb.Write_Record{}, nil
+}
+
 // create implements runserver.create
 // Create a token with a with the given id
 // Reset the token's sate to undefined/null
 //
 // Returns token and success or fail response
-func (s *server) Create(ctx context.Context, in *pb.Token) (*pb.Token, error) {
+func (s *server) Create(ctx context.Context, in *pb.RPCHelper) (*pb.Token, error) {
 	//Check membership
 	for key := range tokenMap {
 		if key == in.GetID() {
@@ -163,14 +221,37 @@ func (s *server) Create(ctx context.Context, in *pb.Token) (*pb.Token, error) {
 	//Create new token
 	newToken := Token{ID: in.GetID()}
 
-	//Lock token before adding
-	//Get yaml info for reader/writers
-	//Update token_list
-	//Create reading servers if writer
-	//Send rpc calls to update token_list for readers
+	//Check if valid reader or writer
 
-	//Append new token to map
+	//Get yaml info for reader/writers
+	var parsedYaml = readYaml(yaml_name, in.GetID())
+
+	//Add token
 	tokenMap[in.GetID()] = newToken
+
+	if in.SERVERTYPE == "Writer" {
+		//iterating updates to reader servers
+		for _, addr := range parsedYaml.READER_ARRAY {
+
+			//Iterate through readers
+			conn, err := grpc.Dial("localhost:"+addr, grpc.WithTransportCredentials(insecure.NewCredentials()))
+			if err != nil {
+				log.Fatalf("Could not connect: %v", err)
+			}
+			defer conn.Close()
+
+			c := pb.NewRunServiceClient(conn)
+
+			// Contact the server
+			ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+			defer cancel()
+
+			c.Create(ctx, &pb.RPCHelper{
+				ID:         in.GetID(),
+				SERVERTYPE: "Reader",
+			})
+		}
+	}
 
 	onClose()
 	return &pb.Token{ID: in.GetID()}, nil
@@ -180,13 +261,36 @@ func (s *server) Create(ctx context.Context, in *pb.Token) (*pb.Token, error) {
 // Delete token with given id
 //
 // Returns Token and error
-func (s *server) Drop(ctx context.Context, in *pb.Token) (*pb.Token, error) {
+func (s *server) Drop(ctx context.Context, in *pb.RPCHelper) (*pb.Token, error) {
 	//Check membership
 	for key := range tokenMap {
 		if key == in.GetID() {
 
 			//Remove membership
 			delete(tokenMap, in.GetID())
+
+			var parsedYaml = readYaml(yaml_name, in.GetID())
+			//Telling writer servers to write same token
+			if in.SERVERTYPE == "Writer" {
+				for _, addr := range parsedYaml.READER_ARRAY {
+					conn, err := grpc.Dial("localhost:"+addr, grpc.WithTransportCredentials(insecure.NewCredentials()))
+					if err != nil {
+						log.Fatalf("Could not connect: %v", err)
+					}
+					defer conn.Close()
+
+					c := pb.NewRunServiceClient(conn)
+
+					// Contact the server
+					ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+					defer cancel()
+
+					c.Drop(ctx, &pb.RPCHelper{
+						ID:         in.GetID(),
+						SERVERTYPE: "Reader",
+					})
+				}
+			} //End Reader Calls
 
 			onClose()
 			return &pb.Token{ID: in.GetID()}, nil
@@ -204,36 +308,81 @@ func (s *server) Drop(ctx context.Context, in *pb.Token) (*pb.Token, error) {
 // Reset final value of token
 //
 // Return partial value on success or fail response
-func (s *server) Write(ctx context.Context, in *pb.Token) (*pb.Token, error) {
+func (s *server) Write(ctx context.Context, in *pb.RPCHelper) (*pb.Token, error) {
 	//Check membership
 	for key, value := range tokenMap {
 		if key == in.GetID() {
 
-			//Lock token before modification
-			//Get yaml info for reader/writers
-			//Update token_list
-			//Send rpc calls to update token_list for readers
+			//Emulate fail-silent for token = 2
+			if in.GetID() == crashToken {
+				time.Sleep(5 * time.Second)
+				return &pb.Token{ID: in.GetID()}, nil
+			} else {
+				//Get yaml info for reader/writers
+				var parsedYaml = readYaml(yaml_name, in.GetID())
 
-			value.NAME = in.GetNAME()
-			value.LOW = in.GetLOW()
-			value.MID = in.GetMID()
-			value.HIGH = in.GetHIGH()
-			value.PARTIAL_VALUE = ArgMin(in.GetNAME(), in.GetLOW(), in.GetMID())
-			value.FINAL_VALUE = 0
+				value.NAME = in.GetNAME()
+				value.LOW = in.GetLOW()
+				value.MID = in.GetMID()
+				value.HIGH = in.GetHIGH()
+				value.PARTIAL_VALUE = ArgMin(in.GetNAME(), in.GetLOW(), in.GetMID())
+				value.FINAL_VALUE = 0
 
-			tokenMap[key] = value //Reassign value back to key after update
+				//Getting final value
+				temp := ArgMin(key, value.MID, value.HIGH)
 
-			//Return token and error
-			onClose()
-			return &pb.Token{
-				ID:            in.GetID(),
-				NAME:          in.GetNAME(),
-				LOW:           in.GetLOW(),
-				MID:           in.GetMID(),
-				HIGH:          in.GetHIGH(),
-				PARTIAL_VALUE: value.PARTIAL_VALUE,
-				FINAL_VALUE:   value.FINAL_VALUE,
-			}, nil
+				//Get min of temp final value and partial value and set final value accordingly
+				if temp <= value.PARTIAL_VALUE {
+					value.FINAL_VALUE = temp
+				} else {
+					value.FINAL_VALUE = value.PARTIAL_VALUE
+				}
+
+				tokenMap[key] = value //Reassign value back to key after update
+
+				//Record of write operations
+				writeMap[key] = WRITE_RECORD{TIME: time.Now(), FINAL_VALUE: value.FINAL_VALUE}
+
+				//Telling writer servers to write same token
+				if in.SERVERTYPE == "Writer" {
+					for _, addr := range parsedYaml.READER_ARRAY {
+						conn, err := grpc.Dial("localhost:"+addr, grpc.WithTransportCredentials(insecure.NewCredentials()))
+						if err != nil {
+							log.Fatalf("Could not connect: %v", err)
+						}
+						defer conn.Close()
+
+						c := pb.NewRunServiceClient(conn)
+
+						// Contact the server
+						ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+						defer cancel()
+
+						c.Write(ctx, &pb.RPCHelper{
+							ID:            in.GetID(),
+							NAME:          in.GetNAME(),
+							LOW:           in.GetLOW(),
+							MID:           in.GetMID(),
+							HIGH:          in.GetHIGH(),
+							PARTIAL_VALUE: value.PARTIAL_VALUE,
+							FINAL_VALUE:   value.FINAL_VALUE,
+							SERVERTYPE:    "Reader",
+						})
+					}
+				} //End Reader Calls
+
+				//Return token and error
+				onClose()
+				return &pb.Token{
+					ID:            in.GetID(),
+					NAME:          in.GetNAME(),
+					LOW:           in.GetLOW(),
+					MID:           in.GetMID(),
+					HIGH:          in.GetHIGH(),
+					PARTIAL_VALUE: value.PARTIAL_VALUE,
+					FINAL_VALUE:   value.FINAL_VALUE,
+				}, nil
+			}
 		}
 	}
 
@@ -246,39 +395,48 @@ func (s *server) Write(ctx context.Context, in *pb.Token) (*pb.Token, error) {
 // Find argmin_x H(name,x) for x in [mid,high)
 //
 // Return token's final value on success or fail response
-func (s *server) Read(ctx context.Context, in *pb.Token) (*pb.Token, error) {
+func (s *server) Read(ctx context.Context, in *pb.RPCHelper) (*pb.Token, error) {
 
-	//Emulate fail-silent every second instruction
-	if crashBool == true {
-		crashBool = false
+	//Emulate fail-silent for token = 2
+	if in.GetID() == crashToken {
 		time.Sleep(5 * time.Second)
-		return &pb.Token{}, nil
+		return &pb.Token{ID: in.GetID(), FINAL_VALUE: in.FINAL_VALUE}, nil
 	} else {
-		//Reset CrashBool to true
-		crashBool = true
-
 		//Check membership
 		for key, value := range tokenMap {
 			if key == in.GetID() {
 
 				//Check for previous write operation performed
 				if value.PARTIAL_VALUE != 0 {
-					//Lock token before modification
+
 					//Get yaml info for reader/writers
-					//Update token_list
-					//Send rpc calls to update token_list for readers
+					var parsedYaml = readYaml(yaml_name, in.GetID())
 
-					temp := ArgMin(key, value.MID, value.HIGH)
+					//Get final values from other readers
+					if in.SERVERTYPE == "Writer" {
+						var tempFinalVal = value.FINAL_VALUE
+						var tempFinalTime = writeMap[in.ID].TIME
+						for _, addr := range parsedYaml.READER_ARRAY {
+							conn, err := grpc.Dial("localhost:"+addr, grpc.WithTransportCredentials(insecure.NewCredentials()))
+							if err != nil {
+								log.Fatalf("Could not connect: %v", err)
+							}
+							defer conn.Close()
 
-					//Get min of temp final value and partial value and set final value accordingly
-					if temp <= value.PARTIAL_VALUE {
-						value.FINAL_VALUE = temp
-					} else {
-						value.FINAL_VALUE = value.PARTIAL_VALUE
+							c := pb.NewRunServiceClient(conn)
+
+							// Contact the server
+							ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+							defer cancel()
+							temp2, _ := c.GetFinalValue(ctx, &pb.RPCHelper{ID: in.GetID()})
+
+							if tempFinalTime.Before(temp2.TIME.AsTime()) {
+								tempFinalVal = temp2.FINAL_VALUE
+							}
+
+						}
+						value.FINAL_VALUE = tempFinalVal
 					}
-
-					tokenMap[key] = value //Reassign value back to key after update
-
 					//Return token and error
 					onClose()
 					return &pb.Token{
@@ -296,11 +454,11 @@ func (s *server) Read(ctx context.Context, in *pb.Token) (*pb.Token, error) {
 				}
 			}
 		}
+		//Token not in list
+		onClose()
+		return nil, errors.New("Token not in list")
 	}
 
-	//Token not in list
-	onClose()
-	return nil, errors.New("Token not in list")
 }
 
 // Main function brings server to life
